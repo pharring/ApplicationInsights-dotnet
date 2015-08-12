@@ -32,7 +32,7 @@
             var request = new RequestTelemetry();
             Assert.False(string.IsNullOrEmpty(request.Id));
             Assert.Equal("200", request.ResponseCode);
-            Assert.Equal(true, request.Success);
+            Assert.Equal(null, request.Success);
         }
 
         [TestMethod]
