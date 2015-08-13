@@ -325,48 +325,7 @@
             // It is hidden from intellisense to prevent customer confusion.
             if (this.IsEnabled())
             {
-                string instrumentationKey = this.Context.InstrumentationKey;
-
-                if (string.IsNullOrEmpty(instrumentationKey))
-                {
-                    instrumentationKey = this.configuration.InstrumentationKey;
-                }
-
-                if (string.IsNullOrEmpty(instrumentationKey))
-                {
-                    return;
-                }
-
-                var telemetryWithProperties = telemetry as ISupportProperties;
-                if (telemetryWithProperties != null)
-                {
-                    if (this.Channel.DeveloperMode.HasValue && this.Channel.DeveloperMode.Value)
-                    {
-                        if (!telemetryWithProperties.Properties.ContainsKey("DeveloperMode"))
-                        {
-                            telemetryWithProperties.Properties.Add("DeveloperMode", "true");
-                        }
-                    }
-
-                    Utils.CopyDictionary(this.Context.Properties, telemetryWithProperties.Properties);
-                }
-
-                telemetry.Context.Initialize(this.Context, instrumentationKey);
-                foreach (ITelemetryInitializer initializer in this.configuration.TelemetryInitializers)
-                {
-                    try
-                    {
-                        initializer.Initialize(telemetry);
-                    }
-                    catch (Exception exception)
-                    {
-                        CoreEventSource.Log.LogError(string.Format(
-                                                        CultureInfo.InvariantCulture,
-                                                        "Exception while initializing {0}, exception message - {1}",
-                                                        initializer.GetType().FullName,
-                                                        exception.ToString()));
-                    }
-                }
+                this.Initialize(telemetry);
 
                 telemetry.Sanitize();
 
@@ -375,6 +334,56 @@
                 if (System.Diagnostics.Debugger.IsAttached)
                 {
                     this.WriteTelemetryToDebugOutput(telemetry);
+                }
+            }
+        }
+
+        /// <summary>
+        /// This method is an internal part of Application Insights infrastructure. Do not call.
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public void Initialize(ITelemetry telemetry)
+        {
+            string instrumentationKey = this.Context.InstrumentationKey;
+
+            if (string.IsNullOrEmpty(instrumentationKey))
+            {
+                instrumentationKey = this.configuration.InstrumentationKey;
+            }
+
+            if (string.IsNullOrEmpty(instrumentationKey))
+            {
+                return;
+            }
+
+            var telemetryWithProperties = telemetry as ISupportProperties;
+            if (telemetryWithProperties != null)
+            {
+                if (this.Channel.DeveloperMode.HasValue && this.Channel.DeveloperMode.Value)
+                {
+                    if (!telemetryWithProperties.Properties.ContainsKey("DeveloperMode"))
+                    {
+                        telemetryWithProperties.Properties.Add("DeveloperMode", "true");
+                    }
+                }
+
+                Utils.CopyDictionary(this.Context.Properties, telemetryWithProperties.Properties);
+            }
+
+            telemetry.Context.Initialize(this.Context, instrumentationKey);
+            foreach (ITelemetryInitializer initializer in this.configuration.TelemetryInitializers)
+            {
+                try
+                {
+                    initializer.Initialize(telemetry);
+                }
+                catch (Exception exception)
+                {
+                    CoreEventSource.Log.LogError(string.Format(
+                                                    CultureInfo.InvariantCulture,
+                                                    "Exception while initializing {0}, exception message - {1}",
+                                                    initializer.GetType().FullName,
+                                                    exception.ToString()));
                 }
             }
         }
