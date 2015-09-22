@@ -36,10 +36,16 @@
     <Compile Include="..\Wrt81\Extensibility\Implementation\Platform\PlatformImplementation.cs">
       <Link>Extensibility\Platform\PlatformImplementation.cs</Link>
     </Compile>
+    <Compile Include="DataContracts\CrashTelemetry.cs" />
     <Compile Include="Extensibility\Implementation\External\AppInsightsTypes.g.cs" />
     <Compile Include="Extensibility\Implementation\External\ComponentContextData.cs" />
     <Compile Include="Extensibility\Implementation\External\ContextTagKeys.cs" />
     <Compile Include="Extensibility\Implementation\External\ContextTagKeys.g.cs" />
+    <Compile Include="Extensibility\Implementation\External\CrashData.g.cs" />
+    <Compile Include="Extensibility\Implementation\External\CrashDataBinary.g.cs" />
+    <Compile Include="Extensibility\Implementation\External\CrashDataHeaders.g.cs" />
+    <Compile Include="Extensibility\Implementation\External\CrashDataThread.g.cs" />
+    <Compile Include="Extensibility\Implementation\External\CrashDataThreadFrame.g.cs" />
     <Compile Include="Extensibility\Implementation\External\DependencyKind.g.cs" />
     <Compile Include="Extensibility\Implementation\External\DeviceContextData.cs" />
     <Compile Include="Extensibility\Implementation\External\InternalContextData.cs" />
@@ -51,6 +57,7 @@
     <Compile Include="Extensibility\Implementation\External\SeverityLevel.g.cs" />
     <Compile Include="Extensibility\Implementation\External\Tags.cs" />
     <Compile Include="Extensibility\Implementation\External\UserContextData.cs" />
+    <Compile Include="Extensibility\Implementation\PEImageReader.cs" />
   </ItemGroup>
   <Import Project="..\Shared\Shared.projitems" Label="Shared" />
   <PropertyGroup Condition=" '$(VisualStudioVersion)' == '' or '$(VisualStudioVersion)' &lt; '14.0' ">
