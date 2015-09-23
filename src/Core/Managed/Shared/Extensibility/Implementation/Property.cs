@@ -168,7 +168,6 @@ namespace Microsoft.ApplicationInsights.Extensibility.Implementation
             }
         }
 
-
         private static string TrimAndTruncate(string value, int maxLength)
         {
             if (value != null)

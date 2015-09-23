@@ -28,7 +28,7 @@
         /// <param name="binary">The binary.</param>
         internal CrashTelemetryBinary(CrashDataBinary binary)
         {
-            this.Data = binary ??new CrashDataBinary();
+            this.Data = binary ?? new CrashDataBinary();
         }
 
         /// <summary>
