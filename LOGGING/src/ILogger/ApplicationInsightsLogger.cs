@@ -9,10 +9,15 @@ namespace Microsoft.Extensions.Logging.ApplicationInsights
 {
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.Globalization;
     using System.Text;
     using Microsoft.ApplicationInsights;
+    using Microsoft.ApplicationInsights.Channel;
     using Microsoft.ApplicationInsights.DataContracts;
+    using Microsoft.ApplicationInsights.Extensibility.Implementation;
+    using Microsoft.ApplicationInsights.Extensibility.W3C;
+    using Microsoft.Extensions.Logging;
 
     /// <summary>
     /// Application insights logger implementation for <see cref="ILogger"/>.
@@ -136,12 +141,25 @@ namespace Microsoft.Extensions.Logging.ApplicationInsights
         /// Populates the state, scope and event information for the logging event.
         /// </summary>
         /// <typeparam name="TState">State information for the current event.</typeparam>
-        /// <param name="telemetryItem">Telemetry item.</param>
+        /// <param name="telemetry">Telemetry item.</param>
         /// <param name="state">Event state information.</param>
         /// <param name="eventId">Event Id information.</param>
-        private void PopulateTelemetry<TState>(ISupportProperties telemetryItem, TState state, EventId eventId)
+        private void PopulateTelemetry<TState>(ITelemetry telemetry, TState state, EventId eventId)
         {
-            IDictionary<string, string> dict = telemetryItem.Properties;
+            if (telemetry is ISupportProperties supportProperties)
+            {
+                AddProperties(supportProperties, state, eventId);
+            }
+
+            if (this.applicationInsightsLoggerOptions.IncludeOperationContextFromActivity)
+            {
+                PopulateOperationContextFromActivity(telemetry.Context.Operation, Activity.Current);
+            }
+        }
+
+        private void AddProperties<TState>(ISupportProperties supportProperties, TState state, EventId eventId)
+        {
+            IDictionary<string, string> dict = supportProperties.Properties;
             dict["CategoryName"] = this.categoryName;
 
             if (eventId.Id != 0)
@@ -194,6 +212,40 @@ namespace Microsoft.Extensions.Logging.ApplicationInsights
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Add the operation's name, ID and parent ID from the given <see cref="Activity"/>.
+        /// </summary>
+        /// <param name="operationContext">The telemetry item's <see cref="OperationContext"/>.</param>
+        /// <param name="activity">The current <see cref="Activity"/>.</param>
+        private void PopulateOperationContextFromActivity(OperationContext operationContext, Activity activity)
+        {
+            if (activity != null)
+            {
+                operationContext.Name = activity.OperationName;
+
+                if (activity.IdFormat == ActivityIdFormat.W3C)
+                {
+                    operationContext.Id = activity.TraceId.ToHexString();
+                    operationContext.ParentId = FormatTelemetryId(operationContext.Id, activity.SpanId.ToHexString());
+                }
+                else
+                {
+                    operationContext.Id = activity.RootId;
+                    operationContext.ParentId = activity.Id;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Constructs a Telemetry ID from given traceid and span id in the format |traceid.spanid.
+        /// This is the format used by Application Insights.        
+        /// </summary>
+        /// <returns>constructed Telemetry ID.</returns>
+        private static string FormatTelemetryId(string traceId, string spanId)
+        {
+            return string.Concat("|", traceId, ".", spanId, ".");
         }
     }
 }

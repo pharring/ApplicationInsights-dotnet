@@ -8,7 +8,6 @@
 namespace Microsoft.Extensions.Logging.ApplicationInsights
 {
     using Microsoft.ApplicationInsights.DataContracts;
-    using Microsoft.Extensions.Logging;
 
     /// <summary>
     /// <see cref="ApplicationInsightsLoggerOptions"/> defines the custom behavior of the tracing information sent to Application Insights.
@@ -26,5 +25,11 @@ namespace Microsoft.Extensions.Logging.ApplicationInsights
         /// Defaults to true.
         /// </summary>
         public bool IncludeScopes { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the operation context is included or not.
+        /// The operation context is extracted from <see cref="System.Diagnostics.Activity.Current"/>.
+        /// </summary>
+        public bool IncludeOperationContextFromActivity { get; set; } = true;
     }
 }
