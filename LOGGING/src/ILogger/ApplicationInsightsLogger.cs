@@ -143,6 +143,16 @@ namespace Microsoft.Extensions.Logging.ApplicationInsights
         }
 
         /// <summary>
+        /// Constructs a Telemetry ID from given traceid and span id in the format |traceid.spanid.
+        /// This is the format used by Application Insights.        
+        /// </summary>
+        /// <returns>constructed Telemetry ID.</returns>
+        private static string FormatTelemetryId(string traceId, string spanId)
+        {
+            return string.Concat("|", traceId, ".", spanId, ".");
+        }
+
+        /// <summary>
         /// Populates the state, scope and event information for the logging event.
         /// </summary>
         /// <typeparam name="TState">State information for the current event.</typeparam>
@@ -153,12 +163,12 @@ namespace Microsoft.Extensions.Logging.ApplicationInsights
         {
             if (telemetry is ISupportProperties supportProperties)
             {
-                AddProperties(supportProperties, state, eventId);
+                this.AddProperties(supportProperties, state, eventId);
             }
 
             if (this.applicationInsightsLoggerOptions.IncludeOperationContextFromActivity)
             {
-                PopulateOperationContextFromActivity(telemetry.Context.Operation, Activity.Current);
+                this.PopulateOperationContextFromActivity(telemetry.Context.Operation, Activity.Current);
             }
         }
 
@@ -241,16 +251,6 @@ namespace Microsoft.Extensions.Logging.ApplicationInsights
                     operationContext.ParentId = activity.Id;
                 }
             }
-        }
-
-        /// <summary>
-        /// Constructs a Telemetry ID from given traceid and span id in the format |traceid.spanid.
-        /// This is the format used by Application Insights.        
-        /// </summary>
-        /// <returns>constructed Telemetry ID.</returns>
-        private static string FormatTelemetryId(string traceId, string spanId)
-        {
-            return string.Concat("|", traceId, ".", spanId, ".");
         }
     }
 }
