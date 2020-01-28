@@ -84,6 +84,11 @@ namespace Microsoft.ApplicationInsights.Log4NetAppender
         /// <param name="loggingEvent">Events to be logged.</param>
         protected override void Append(LoggingEvent loggingEvent)
         {
+            if (loggingEvent == null)
+            {
+                throw new ArgumentNullException(nameof(loggingEvent));
+            }
+
             if (loggingEvent.ExceptionObject != null)
             {
                 this.SendException(loggingEvent);
@@ -186,17 +191,16 @@ namespace Microsoft.ApplicationInsights.Log4NetAppender
                 var exceptionTelemetry = new ExceptionTelemetry(loggingEvent.ExceptionObject)
                 {
                     SeverityLevel = GetSeverityLevel(loggingEvent.Level),
+                    Message = $"{loggingEvent.ExceptionObject.GetType().ToString()}: {loggingEvent.ExceptionObject.Message}",
                 };
 
-                string message = null;
                 if (loggingEvent.RenderedMessage != null)
                 {
-                    message = this.RenderLoggingEvent(loggingEvent);
-                }
-
-                if (!string.IsNullOrEmpty(message))
-                {
-                    exceptionTelemetry.Properties.Add("Message", message);
+                    var message = this.RenderLoggingEvent(loggingEvent); 
+                    if (!string.IsNullOrEmpty(message))
+                    {
+                        exceptionTelemetry.Properties.Add("Message", message);
+                    }
                 }
 
                 BuildCustomProperties(loggingEvent, exceptionTelemetry);
@@ -212,7 +216,6 @@ namespace Microsoft.ApplicationInsights.Log4NetAppender
         {
             try
             {
-                loggingEvent.GetProperties();
                 string message = loggingEvent.RenderedMessage != null ? this.RenderLoggingEvent(loggingEvent) : "Log4Net Trace";
 
                 var trace = new TraceTelemetry(message)

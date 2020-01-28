@@ -16,9 +16,12 @@
 
             if (legacyId[0] == '|')
             {
-                var dot = legacyId.IndexOf('.');
+                var dotIndex = legacyId.IndexOf('.');
 
-                return legacyId.Substring(1, dot - 1);
+                if (dotIndex > 0)
+                {
+                    return legacyId.Substring(1, dotIndex - 1);
+                }
             }
 
             return StringUtilities.EnforceMaxLength(legacyId, InjectionGuardConstants.RequestHeaderMaxLength);
@@ -29,7 +32,7 @@
             Debug.Assert(!string.IsNullOrEmpty(legacyId), "diagnosticId must not be null or empty");
 
             traceId = default;
-            if (legacyId[0] == '|' && legacyId.Length >= 33 && legacyId[33] == '.')
+            if (legacyId[0] == '|' && legacyId.Length > 33 && legacyId[33] == '.')
             {
                 for (int i = 1; i < 33; i++)
                 {
@@ -44,11 +47,6 @@
             }
 
             return false;
-        }
-
-        internal static string FormatTelemetryId(string traceId, string spanId)
-        {
-            return string.Concat('|', traceId, '.', spanId, '.');
         }
     }
 }

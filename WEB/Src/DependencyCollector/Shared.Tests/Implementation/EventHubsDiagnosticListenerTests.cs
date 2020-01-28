@@ -25,6 +25,7 @@
             Activity.DefaultIdFormat = ActivityIdFormat.W3C;
             Activity.ForceDefaultIdFormat = true;
             this.configuration = new TelemetryConfiguration();
+            this.configuration.TelemetryInitializers.Add(new OperationCorrelationTelemetryInitializer());
             this.sentItems = new List<ITelemetry>();
             this.configuration.TelemetryChannel = new StubTelemetryChannel { OnSend = item => this.sentItems.Add(item), EndpointAddress = "https://dc.services.visualstudio.com/v2/track" };
             this.configuration.InstrumentationKey = Guid.NewGuid().ToString();
@@ -87,9 +88,129 @@
                 Assert.AreEqual("sb://eventhubname.servicebus.windows.net/ | ehname", telemetry.Target);
                 Assert.IsTrue(telemetry.Success.Value);
 
-                Assert.AreEqual($"|{sendActivity.TraceId.ToHexString()}.{sendActivity.ParentSpanId.ToHexString()}.", telemetry.Context.Operation.ParentId);
+                Assert.AreEqual(sendActivity.ParentSpanId.ToHexString(), telemetry.Context.Operation.ParentId);
                 Assert.AreEqual(sendActivity.TraceId.ToHexString(), telemetry.Context.Operation.Id);
-                Assert.AreEqual($"|{sendActivity.TraceId.ToHexString()}.{sendActivity.SpanId.ToHexString()}.", telemetry.Id);
+                Assert.AreEqual(sendActivity.SpanId.ToHexString(), telemetry.Id);
+
+                Assert.AreEqual("v1", telemetry.Properties["k1"]);
+                Assert.AreEqual("eventhubname.servicebus.windows.net", telemetry.Properties["peer.hostname"]);
+                Assert.AreEqual("ehname", telemetry.Properties["eh.event_hub_name"]);
+                Assert.AreEqual("SomePartitionKeyHere", telemetry.Properties["eh.partition_key"]);
+                Assert.AreEqual("EventHubClient1(ehname)", telemetry.Properties["eh.client_id"]);
+
+                Assert.IsTrue(telemetry.Properties.TryGetValue("tracestate", out var tracestate));
+                Assert.AreEqual("state=some", tracestate);
+            }
+        }
+
+        [TestMethod]
+        public void EventHubsSuccessfulReceiveIsHandled()
+        {
+            using (var listener = new DiagnosticListener("Microsoft.Azure.EventHubs"))
+            using (var module = new DependencyTrackingTelemetryModule())
+            {
+                module.IncludeDiagnosticSourceActivities.Add("Microsoft.Azure.EventHubs");
+                module.Initialize(this.configuration);
+
+                Activity sendActivity = null;
+                Activity parentActivity = new Activity("parent").AddBaggage("k1", "v1").Start();
+                parentActivity.TraceStateString = "state=some";
+                var telemetry = this.TrackOperation<DependencyTelemetry>(
+                    listener,
+                    "Microsoft.Azure.EventHubs.Receive",
+                    TaskStatus.RanToCompletion,
+                    null,
+                    () => sendActivity = Activity.Current);
+
+                Assert.IsNotNull(telemetry);
+                Assert.AreEqual("Receive", telemetry.Name);
+                Assert.AreEqual(RemoteDependencyConstants.AzureEventHubs, telemetry.Type);
+                Assert.AreEqual("sb://eventhubname.servicebus.windows.net/ | ehname", telemetry.Target);
+                Assert.IsTrue(telemetry.Success.Value);
+
+                Assert.AreEqual(sendActivity.ParentSpanId.ToHexString(), telemetry.Context.Operation.ParentId);
+                Assert.AreEqual(sendActivity.TraceId.ToHexString(), telemetry.Context.Operation.Id);
+                Assert.AreEqual(sendActivity.SpanId.ToHexString(), telemetry.Id);
+
+                Assert.AreEqual("v1", telemetry.Properties["k1"]);
+                Assert.AreEqual("eventhubname.servicebus.windows.net", telemetry.Properties["peer.hostname"]);
+                Assert.AreEqual("ehname", telemetry.Properties["eh.event_hub_name"]);
+                Assert.AreEqual("SomePartitionKeyHere", telemetry.Properties["eh.partition_key"]);
+                Assert.AreEqual("EventHubClient1(ehname)", telemetry.Properties["eh.client_id"]);
+
+                Assert.IsTrue(telemetry.Properties.TryGetValue("tracestate", out var tracestate));
+                Assert.AreEqual("state=some", tracestate);
+            }
+        }
+
+        [TestMethod]
+        public void EventHubsSuccessfulReceiveShortNameIsHandled()
+        {
+            using (var listener = new DiagnosticListener("Microsoft.Azure.EventHubs"))
+            using (var module = new DependencyTrackingTelemetryModule())
+            {
+                module.IncludeDiagnosticSourceActivities.Add("Microsoft.Azure.EventHubs");
+                module.Initialize(this.configuration);
+
+                Activity sendActivity = null;
+                Activity parentActivity = new Activity("parent").AddBaggage("k1", "v1").Start();
+                parentActivity.TraceStateString = "state=some";
+                var telemetry = this.TrackOperation<DependencyTelemetry>(
+                    listener,
+                    "Receive",
+                    TaskStatus.RanToCompletion,
+                    null,
+                    () => sendActivity = Activity.Current);
+
+                Assert.IsNotNull(telemetry);
+                Assert.AreEqual("Receive", telemetry.Name);
+                Assert.AreEqual(RemoteDependencyConstants.AzureEventHubs, telemetry.Type);
+                Assert.AreEqual("sb://eventhubname.servicebus.windows.net/ | ehname", telemetry.Target);
+                Assert.IsTrue(telemetry.Success.Value);
+
+                Assert.AreEqual(sendActivity.ParentSpanId.ToHexString(), telemetry.Context.Operation.ParentId);
+                Assert.AreEqual(sendActivity.TraceId.ToHexString(), telemetry.Context.Operation.Id);
+                Assert.AreEqual(sendActivity.SpanId.ToHexString(), telemetry.Id);
+
+                Assert.AreEqual("v1", telemetry.Properties["k1"]);
+                Assert.AreEqual("eventhubname.servicebus.windows.net", telemetry.Properties["peer.hostname"]);
+                Assert.AreEqual("ehname", telemetry.Properties["eh.event_hub_name"]);
+                Assert.AreEqual("SomePartitionKeyHere", telemetry.Properties["eh.partition_key"]);
+                Assert.AreEqual("EventHubClient1(ehname)", telemetry.Properties["eh.client_id"]);
+
+                Assert.IsTrue(telemetry.Properties.TryGetValue("tracestate", out var tracestate));
+                Assert.AreEqual("state=some", tracestate);
+            }
+        }
+
+        [TestMethod]
+        public void EventHubsSuccessfulSendShortNameIsHandled()
+        {
+            using (var listener = new DiagnosticListener("Microsoft.Azure.EventHubs"))
+            using (var module = new DependencyTrackingTelemetryModule())
+            {
+                module.IncludeDiagnosticSourceActivities.Add("Microsoft.Azure.EventHubs");
+                module.Initialize(this.configuration);
+
+                Activity sendActivity = null;
+                Activity parentActivity = new Activity("parent").AddBaggage("k1", "v1").Start();
+                parentActivity.TraceStateString = "state=some";
+                var telemetry = this.TrackOperation<DependencyTelemetry>(
+                    listener,
+                    "Send",
+                    TaskStatus.RanToCompletion,
+                    null,
+                    () => sendActivity = Activity.Current);
+
+                Assert.IsNotNull(telemetry);
+                Assert.AreEqual("Send", telemetry.Name);
+                Assert.AreEqual(RemoteDependencyConstants.AzureEventHubs, telemetry.Type);
+                Assert.AreEqual("sb://eventhubname.servicebus.windows.net/ | ehname", telemetry.Target);
+                Assert.IsTrue(telemetry.Success.Value);
+
+                Assert.AreEqual(sendActivity.ParentSpanId.ToHexString(), telemetry.Context.Operation.ParentId);
+                Assert.AreEqual(sendActivity.TraceId.ToHexString(), telemetry.Context.Operation.Id);
+                Assert.AreEqual(sendActivity.SpanId.ToHexString(), telemetry.Id);
 
                 Assert.AreEqual("v1", telemetry.Properties["k1"]);
                 Assert.AreEqual("eventhubname.servicebus.windows.net", telemetry.Properties["peer.hostname"]);
@@ -165,7 +286,7 @@
 
                 Assert.IsNull(telemetry.Context.Operation.ParentId);
                 Assert.AreEqual(sendActivity.TraceId.ToHexString(), telemetry.Context.Operation.Id);
-                Assert.AreEqual($"|{sendActivity.TraceId.ToHexString()}.{sendActivity.SpanId.ToHexString()}.", telemetry.Id);
+                Assert.AreEqual(sendActivity.SpanId.ToHexString(), telemetry.Id);
 
                 Assert.AreEqual("eventhubname.servicebus.windows.net", telemetry.Properties["peer.hostname"]);
                 Assert.AreEqual("ehname", telemetry.Properties["eh.event_hub_name"]);
@@ -199,7 +320,7 @@
 
                 Assert.AreEqual("parent", telemetry.Context.Operation.ParentId);
                 Assert.AreEqual(sendActivity.TraceId.ToHexString(), telemetry.Context.Operation.Id);
-                Assert.AreEqual($"|{sendActivity.TraceId.ToHexString()}.{sendActivity.SpanId.ToHexString()}.", telemetry.Id);
+                Assert.AreEqual(sendActivity.SpanId.ToHexString(), telemetry.Id);
 
                 Assert.AreEqual("eventhubname.servicebus.windows.net", telemetry.Properties["peer.hostname"]);
                 Assert.AreEqual("ehname", telemetry.Properties["eh.event_hub_name"]);
@@ -232,9 +353,9 @@
                 Assert.AreEqual("sb://eventhubname.servicebus.windows.net/ | ehname", telemetry.Target);
                 Assert.IsFalse(telemetry.Success.Value);
 
-                Assert.AreEqual($"|{sendActivity.TraceId.ToHexString()}.{sendActivity.ParentSpanId.ToHexString()}.", telemetry.Context.Operation.ParentId);
+                Assert.AreEqual(sendActivity.ParentSpanId.ToHexString(), telemetry.Context.Operation.ParentId);
                 Assert.AreEqual(sendActivity.TraceId.ToHexString(), telemetry.Context.Operation.Id);
-                Assert.AreEqual($"|{sendActivity.TraceId.ToHexString()}.{sendActivity.SpanId.ToHexString()}.", telemetry.Id);
+                Assert.AreEqual(sendActivity.SpanId.ToHexString(), telemetry.Id);
 
                 Assert.AreEqual("v1", telemetry.Properties["k1"]);
                 Assert.AreEqual("eventhubname.servicebus.windows.net", telemetry.Properties["peer.hostname"]);

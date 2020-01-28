@@ -118,6 +118,12 @@ namespace Microsoft.ApplicationInsights.DependencyCollector.Implementation
                     return null;
                 }
 
+                if (webRequest.Headers[W3C.W3CConstants.TraceParentHeader] != null && Activity.DefaultIdFormat == ActivityIdFormat.W3C)
+                {
+                    DependencyCollectorEventSource.Log.HttpRequestAlreadyInstrumented();
+                    return null;
+                }
+
                 // If the object already exists, don't add again. This happens because either GetResponse or GetRequestStream could
                 // be the starting point for the outbound call.
                 DependencyTelemetry telemetry = null;
@@ -234,7 +240,7 @@ namespace Microsoft.ApplicationInsights.DependencyCollector.Implementation
                     {
                         if (webRequest.Headers[RequestResponseHeaders.RequestIdHeader] == null)
                         {
-                            webRequest.Headers.Add(RequestResponseHeaders.RequestIdHeader, telemetry.Id);
+                            webRequest.Headers.Add(RequestResponseHeaders.RequestIdHeader, string.Concat('|', telemetry.Context.Operation.Id, '.', telemetry.Id, '.'));
                         }
                     }
                 }

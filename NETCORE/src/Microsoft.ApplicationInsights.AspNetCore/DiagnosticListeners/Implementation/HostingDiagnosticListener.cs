@@ -63,6 +63,7 @@
 
         // fetch is unique per event and per property
         private readonly PropertyFetcher httpContextFetcherOnBeforeAction = new PropertyFetcher("httpContext");
+        private readonly PropertyFetcher httpContextFetcherOnBeforeAction30 = new PropertyFetcher("HttpContext");
         private readonly PropertyFetcher routeDataFetcher = new PropertyFetcher("routeData");
         private readonly PropertyFetcher routeDataFetcher30 = new PropertyFetcher("RouteData");
         private readonly PropertyFetcher routeValuesFetcher = new PropertyFetcher("Values");
@@ -146,6 +147,8 @@
         /// <summary>
         /// Diagnostic event handler method for 'Microsoft.AspNetCore.Mvc.BeforeAction' event.
         /// </summary>
+        /// <param name="httpContext">HttpContext is used to retrieve information about the Request and Response.</param>
+        /// <param name="routeValues">Used to get the name of the request.</param>
         public void OnBeforeAction(HttpContext httpContext, IDictionary<string, object> routeValues)
         {
             var telemetry = httpContext.Features.Get<RequestTelemetry>();
@@ -164,6 +167,7 @@
         /// <summary>
         /// Diagnostic event handler method for 'Microsoft.AspNetCore.Hosting.HttpRequestIn.Start' event. This is from 2.XX runtime.
         /// </summary>
+        /// <param name="httpContext">HttpContext is used to retrieve information about the Request and Response.</param>
         public void OnHttpRequestInStart(HttpContext httpContext)
         {
             if (this.client.IsEnabled())
@@ -189,6 +193,9 @@
                 string legacyRootId = null;
                 bool traceParentPresent = false;
                 var headers = httpContext.Request.Headers;
+
+                // Update the static RoleName while we have access to the httpContext.
+                RoleNameContainer.Instance?.Set(headers);
 
                 // 3 possibilities when TelemetryConfiguration.EnableW3CCorrelation = true
                 // 1. No incoming headers. originalParentId will be null. Simply use the Activity as such.
@@ -282,8 +289,7 @@
 
                 var requestTelemetry = this.InitializeRequestTelemetry(httpContext, currentActivity, Stopwatch.GetTimestamp(), legacyRootId);
 
-                requestTelemetry.Context.Operation.ParentId =
-                    GetParentId(currentActivity, originalParentId, requestTelemetry.Context.Operation.Id);
+                requestTelemetry.Context.Operation.ParentId = GetParentId(currentActivity, originalParentId);
 
                 this.AddAppIdToResponseIfRequired(httpContext, requestTelemetry);
             }
@@ -292,6 +298,7 @@
         /// <summary>
         /// Diagnostic event handler method for 'Microsoft.AspNetCore.Hosting.HttpRequestIn.Stop' event. This is from 2.XX runtime.
         /// </summary>
+        /// <param name="httpContext">HttpContext is used to retrieve information about the Request and Response.</param>
         public void OnHttpRequestInStop(HttpContext httpContext)
         {
             this.EndRequest(httpContext, Stopwatch.GetTimestamp());
@@ -300,6 +307,8 @@
         /// <summary>
         /// Diagnostic event handler method for 'Microsoft.AspNetCore.Hosting.BeginRequest' event. This is from 1.XX runtime.
         /// </summary>
+        /// <param name="httpContext">HttpContext is used to retrieve information about the Request and Response.</param>
+        /// <param name="timestamp">Used to set the request start property.</param>
         public void OnBeginRequest(HttpContext httpContext, long timestamp)
         {
             if (this.client.IsEnabled() && this.aspNetCoreMajorVersion == AspNetCoreMajorVersion.One)
@@ -317,6 +326,10 @@
                 // 1.XX does not create Activity and SDK is responsible for creating Activity.
                 var activity = new Activity(ActivityCreatedByHostingDiagnosticListener);
                 IHeaderDictionary requestHeaders = httpContext.Request.Headers;
+
+                // Update the static RoleName while we have access to the httpContext.
+                RoleNameContainer.Instance?.Set(requestHeaders);
+
                 string originalParentId = null;
                 string legacyRootId = null;
 
@@ -366,8 +379,7 @@
                 ReadCorrelationContext(requestHeaders, activity);
                 var requestTelemetry = this.InitializeRequestTelemetry(httpContext, activity, timestamp, legacyRootId);
 
-                requestTelemetry.Context.Operation.ParentId =
-                    GetParentId(activity, originalParentId, requestTelemetry.Context.Operation.Id);
+                requestTelemetry.Context.Operation.ParentId = GetParentId(activity, originalParentId);
 
                 this.AddAppIdToResponseIfRequired(httpContext, requestTelemetry);
             }
@@ -376,6 +388,8 @@
         /// <summary>
         /// Diagnostic event handler method for 'Microsoft.AspNetCore.Hosting.EndRequest' event. This is from 1.XX runtime.
         /// </summary>
+        /// <param name="httpContext">HttpContext is used to retrieve information about the Request and Response.</param>
+        /// <param name="timestamp">Used to set request stop property.</param>
         public void OnEndRequest(HttpContext httpContext, long timestamp)
         {
             if (this.aspNetCoreMajorVersion == AspNetCoreMajorVersion.One)
@@ -387,6 +401,8 @@
         /// <summary>
         /// Diagnostic event handler method for 'Microsoft.AspNetCore.Hosting.UnhandledException' event.
         /// </summary>
+        /// <param name="httpContext">HttpContext is used to retrieve information about the Request and Response.</param>
+        /// <param name="exception">Used to create exception telemetry.</param>
         public void OnHostingException(HttpContext httpContext, Exception exception)
         {
             this.OnException(httpContext, exception);
@@ -402,6 +418,8 @@
         /// <summary>
         /// Diagnostic event handler method for 'Microsoft.AspNetCore.Hosting.HandledException' event.
         /// </summary>
+        /// <param name="httpContext">HttpContext is used to retrieve information about the Request and Response.</param>
+        /// <param name="exception">Used to create exception telemetry.</param>
         public void OnDiagnosticsHandledException(HttpContext httpContext, Exception exception)
         {
             this.OnException(httpContext, exception);
@@ -410,6 +428,8 @@
         /// <summary>
         /// Diagnostic event handler method for 'Microsoft.AspNetCore.Diagnostics.UnhandledException' event.
         /// </summary>
+        /// <param name="httpContext">HttpContext is used to retrieve information about the Request and Response.</param>
+        /// <param name="exception">Used to create exception telemetry.</param>
         public void OnDiagnosticsUnhandledException(HttpContext httpContext, Exception exception)
         {
             this.OnException(httpContext, exception);
@@ -421,6 +441,7 @@
             SubscriptionManager.Detach(this);
         }
 
+        /// <inheritdoc />
         public void OnNext(KeyValuePair<string, object> value)
         {
             HttpContext httpContext = null;
@@ -450,13 +471,18 @@
                 }
                 else if (value.Key == "Microsoft.AspNetCore.Mvc.BeforeAction")
                 {
-                    var context = this.httpContextFetcherOnBeforeAction.Fetch(value.Value) as HttpContext;
-
+                    HttpContext context = null;
                     object routeData = null;
 
-                    // Asp.Net Core 3.0 changed the field name to "RouteData" from "routeData
+                    // Asp.Net Core 3.0 changed the field name to "RouteData" from "routeData and "HttpContext" from "httpContext"
                     if (this.aspNetCoreMajorVersion == AspNetCoreMajorVersion.Three)
                     {
+                        context = this.httpContextFetcherOnBeforeAction30.Fetch(value.Value) as HttpContext;
+                        if (context == null)
+                        {
+                            context = this.httpContextFetcherOnBeforeAction.Fetch(value.Value) as HttpContext;
+                        }
+
                         routeData = this.routeDataFetcher30.Fetch(value.Value);
                         if (routeData == null)
                         {
@@ -465,6 +491,12 @@
                     }
                     else
                     {
+                        context = this.httpContextFetcherOnBeforeAction.Fetch(value.Value) as HttpContext;
+                        if (context == null)
+                        {
+                            context = this.httpContextFetcherOnBeforeAction30.Fetch(value.Value) as HttpContext;
+                        }
+
                         routeData = this.routeDataFetcher.Fetch(value.Value);
                         if (routeData == null)
                         {
@@ -541,14 +573,14 @@
         {
         }
 
-        private static string GetParentId(Activity activity, string originalParentId, string operationId)
+        private static string GetParentId(Activity activity, string originalParentId)
         {
             if (activity.IdFormat == ActivityIdFormat.W3C && activity.ParentSpanId != default)
             {
                 var parentSpanId = activity.ParentSpanId.ToHexString();
                 if (parentSpanId != "0000000000000000")
                 {
-                    return FormatTelemetryId(operationId, parentSpanId);
+                    return parentSpanId;
                 }
             }
 
@@ -604,11 +636,6 @@
                 result = null;
                 return false;
             }
-        }
-
-        private static string FormatTelemetryId(string traceId, string spanId)
-        {
-            return string.Concat("|", traceId, ".", spanId, ".");
         }
 
         private static void ReadCorrelationContext(IHeaderDictionary requestHeaders, Activity activity)
@@ -729,7 +756,7 @@
             if (activity.IdFormat == ActivityIdFormat.W3C)
             {
                 var traceId = activity.TraceId.ToHexString();
-                requestTelemetry.Id = FormatTelemetryId(traceId, activity.SpanId.ToHexString());
+                requestTelemetry.Id = activity.SpanId.ToHexString();
                 requestTelemetry.Context.Operation.Id = traceId;
                 AspNetCoreEventSource.Instance.RequestTelemetryCreated("W3C", requestTelemetry.Id, traceId);
             }
@@ -910,7 +937,7 @@
                 }
 
                 var exceptionTelemetry = new ExceptionTelemetry(exception);
-                exceptionTelemetry.HandledAt = ExceptionHandledAt.Platform;
+                exceptionTelemetry.Properties["handledAt"] = "Platform";
                 exceptionTelemetry.Context.GetInternalContext().SdkVersion = this.sdkVersion;
                 this.client.Track(exceptionTelemetry);
             }

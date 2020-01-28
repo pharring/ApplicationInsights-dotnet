@@ -53,7 +53,7 @@
                 {
                     if (activity.ParentSpanId != default)
                     {
-                        telemetry.Context.Operation.ParentId = W3CUtilities.FormatTelemetryId(traceId, activity.ParentSpanId.ToHexString());
+                        telemetry.Context.Operation.ParentId = activity.ParentSpanId.ToHexString();
                     }
                     else if (!string.IsNullOrEmpty(activity.ParentId))
                     {
@@ -62,13 +62,7 @@
                     }
                 }
 
-                telemetry.Id = W3CUtilities.FormatTelemetryId(traceId, activity.SpanId.ToHexString());
-
-                // TODO[tracestate]: remove, this is done in base SDK
-                if (!string.IsNullOrEmpty(activity.TraceStateString) && !telemetry.Properties.ContainsKey(W3CConstants.TracestatePropertyKey))
-                {
-                    telemetry.Properties.Add(W3CConstants.TracestatePropertyKey, activity.TraceStateString);
-                }
+                telemetry.Id = activity.SpanId.ToHexString();
             }
             else
             {
@@ -77,13 +71,7 @@
                 telemetry.Context.Operation.ParentId = activity.ParentId;
             }
 
-            foreach (var item in activity.Tags)
-            {
-                if (!telemetry.Properties.ContainsKey(item.Key))
-                {
-                    telemetry.Properties[item.Key] = item.Value;
-                }
-            }
+            this.PopulateTags(activity, telemetry);
 
             foreach (var item in activity.Baggage)
             {
@@ -93,7 +81,21 @@
                 }
             }
 
-            telemetry.Success = this.IsOperationSuccessful(eventName, eventPayload, activity);
+            if (!telemetry.Success.HasValue || telemetry.Success.Value)
+            {
+                telemetry.Success = this.IsOperationSuccessful(eventName, eventPayload, activity);
+            }
+        }
+
+        protected virtual void PopulateTags(Activity activity, OperationTelemetry telemetry)
+        {
+            foreach (var item in activity.Tags)
+            {
+                if (!telemetry.Properties.ContainsKey(item.Key))
+                {
+                    telemetry.Properties[item.Key] = item.Value;
+                }
+            }
         }
 
         protected virtual string GetOperationName(string eventName, object eventPayload, Activity activity)

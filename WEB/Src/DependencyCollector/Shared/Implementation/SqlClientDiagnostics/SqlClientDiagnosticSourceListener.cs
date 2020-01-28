@@ -71,7 +71,7 @@ namespace Microsoft.ApplicationInsights.DependencyCollector.Implementation.SqlCl
         private readonly TelemetryClient client;
         private readonly SqlClientDiagnosticSourceSubscriber subscriber;
 
-        private readonly ObjectInstanceBasedOperationHolder operationHolder = new ObjectInstanceBasedOperationHolder();
+        private readonly ObjectInstanceBasedOperationHolder<DependencyTelemetry> operationHolder = new ObjectInstanceBasedOperationHolder<DependencyTelemetry>();
 
         public SqlClientDiagnosticSourceListener(TelemetryConfiguration configuration)
         {
@@ -354,7 +354,7 @@ namespace Microsoft.ApplicationInsights.DependencyCollector.Implementation.SqlCl
                 {
                     var traceId = activity.TraceId.ToHexString();
                     telemetry.Context.Operation.Id = traceId;
-                    telemetry.Context.Operation.ParentId = W3CUtilities.FormatTelemetryId(traceId, activity.SpanId.ToHexString());
+                    telemetry.Context.Operation.ParentId = activity.SpanId.ToHexString();
                 }
                 else
                 {

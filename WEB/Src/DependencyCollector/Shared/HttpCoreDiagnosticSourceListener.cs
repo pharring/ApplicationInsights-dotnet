@@ -47,7 +47,6 @@ namespace Microsoft.ApplicationInsights.DependencyCollector.Implementation
 
     internal class HttpCoreDiagnosticSourceListener : IObserver<KeyValuePair<string, object>>, IDisposable
     {
-        private const string DependencyErrorPropertyKey = "Error";
         private const string HttpOutEventName = "System.Net.Http.HttpRequestOut";
         private const string HttpOutStartEventName = "System.Net.Http.HttpRequestOut.Start";
         private const string HttpOutStopEventName = "System.Net.Http.HttpRequestOut.Stop";
@@ -341,6 +340,12 @@ namespace Microsoft.ApplicationInsights.DependencyCollector.Implementation
                 return;
             }
 
+            if (request.Headers.Contains(W3C.W3CConstants.TraceParentHeader) && Activity.DefaultIdFormat == ActivityIdFormat.W3C)
+            {
+                DependencyCollectorEventSource.Log.HttpRequestAlreadyInstrumented(currentActivity.Id);
+                return;
+            }
+
             DependencyCollectorEventSource.Log.HttpCoreDiagnosticSourceListenerStart(currentActivity.Id);
 
             this.InjectRequestHeaders(request, this.configuration.InstrumentationKey);
@@ -367,6 +372,14 @@ namespace Microsoft.ApplicationInsights.DependencyCollector.Implementation
                 return;
             }
 
+            if (Activity.DefaultIdFormat == ActivityIdFormat.W3C &&
+                request.Headers.TryGetValues(W3C.W3CConstants.TraceParentHeader, out var parents) && 
+                parents.FirstOrDefault() != currentActivity.Id)
+            {
+                DependencyCollectorEventSource.Log.HttpRequestAlreadyInstrumented();
+                return;
+            }
+
             DependencyCollectorEventSource.Log.HttpCoreDiagnosticSourceListenerStop(currentActivity.Id);
 
             Uri requestUri = request.RequestUri;
@@ -382,10 +395,10 @@ namespace Microsoft.ApplicationInsights.DependencyCollector.Implementation
                 telemetry.Context.Operation.Id = traceId;
                 if (currentActivity.ParentSpanId != default)
                 {
-                    telemetry.Context.Operation.ParentId = W3CUtilities.FormatTelemetryId(traceId, currentActivity.ParentSpanId.ToHexString());
+                    telemetry.Context.Operation.ParentId = currentActivity.ParentSpanId.ToHexString();
                 }
 
-                telemetry.Id = W3CUtilities.FormatTelemetryId(traceId, currentActivity.SpanId.ToHexString());
+                telemetry.Id = currentActivity.SpanId.ToHexString();
             }
             else
             {
@@ -400,12 +413,6 @@ namespace Microsoft.ApplicationInsights.DependencyCollector.Implementation
                 {
                     telemetry.Properties[item.Key] = item.Value;
                 }
-            }
-
-            // TODO[tracestate]: remove, this is done in base SDK
-            if (!string.IsNullOrEmpty(currentActivity.TraceStateString) && !telemetry.Properties.ContainsKey(W3CConstants.TracestatePropertyKey))
-            {
-                telemetry.Properties.Add(W3CConstants.TracestatePropertyKey, currentActivity.TraceStateString);
             }
 
             this.client.Initialize(telemetry);
@@ -432,7 +439,7 @@ namespace Microsoft.ApplicationInsights.DependencyCollector.Implementation
             {
                 if (this.pendingExceptions.TryRemove(currentActivity.Id, out Exception exception))
                 {
-                    telemetry.Properties[DependencyErrorPropertyKey] = exception.GetBaseException().Message;
+                    telemetry.Properties[RemoteDependencyConstants.DependencyErrorPropertyKey] = exception.GetBaseException().Message;
                 }
 
                 telemetry.ResultCode = requestTaskStatus.ToString();
@@ -458,13 +465,6 @@ namespace Microsoft.ApplicationInsights.DependencyCollector.Implementation
                 var resourceName = request.Method.Method + " " + requestUri.AbsolutePath;
 
                 var dependency = this.client.StartOperation<DependencyTelemetry>(resourceName);
-
-                // TODO[tracestate]: remove, this is done in base SDK
-                var tracestate = Activity.Current?.TraceStateString;
-                if (!string.IsNullOrEmpty(tracestate) && !dependency.Telemetry.Properties.ContainsKey(W3CConstants.TracestatePropertyKey))
-                {
-                    dependency.Telemetry.Properties.Add(W3CConstants.TracestatePropertyKey, tracestate);
-                }
 
                 dependency.Telemetry.Target = DependencyTargetNameHelper.GetDependencyTargetName(requestUri);
                 dependency.Telemetry.Type = RemoteDependencyConstants.HTTP;
@@ -544,9 +544,7 @@ namespace Microsoft.ApplicationInsights.DependencyCollector.Implementation
         {
             if (!requestHeaders.Contains(RequestResponseHeaders.RequestIdHeader))
             {
-                requestHeaders.Add(RequestResponseHeaders.RequestIdHeader,
-                    W3CUtilities.FormatTelemetryId(currentActivity.TraceId.ToHexString(),
-                            currentActivity.SpanId.ToHexString()));
+                requestHeaders.Add(RequestResponseHeaders.RequestIdHeader, string.Concat('|', currentActivity.TraceId.ToHexString(), '.', currentActivity.SpanId.ToHexString(), '.'));
             }
         }
 
@@ -638,7 +636,7 @@ namespace Microsoft.ApplicationInsights.DependencyCollector.Implementation
 
                         // Add the parent ID
                         string parentId = currentActivity.IdFormat == ActivityIdFormat.W3C ? 
-                            W3CUtilities.FormatTelemetryId(rootId, currentActivity.SpanId.ToHexString()) :
+                            currentActivity.SpanId.ToHexString() :
                             currentActivity.Id;
 
                         if (!string.IsNullOrEmpty(parentId) && !requestHeaders.Contains(RequestResponseHeaders.StandardParentIdHeader))

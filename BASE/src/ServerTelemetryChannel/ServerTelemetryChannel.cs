@@ -2,9 +2,11 @@
 {
     using System;
     using System.ComponentModel;
+    using System.Diagnostics;
     using System.Diagnostics.CodeAnalysis;
     using System.Threading.Tasks;
     using Microsoft.ApplicationInsights.Channel;
+    using Microsoft.ApplicationInsights.Common;
     using Microsoft.ApplicationInsights.Extensibility;
     using Microsoft.ApplicationInsights.WindowsServer.TelemetryChannel.Implementation;
 
@@ -17,6 +19,8 @@
         internal TelemetryBuffer TelemetryBuffer;
         internal Transmitter Transmitter;
 
+        private readonly InterlockedThrottle throttleEmptyIkeyLog = new InterlockedThrottle(interval: TimeSpan.FromSeconds(30));
+
         private bool? developerMode;
         private int telemetryBufferCapacity;
         private ITelemetryProcessor telemetryProcessor;
@@ -26,6 +30,7 @@
         /// Initializes a new instance of the <see cref="ServerTelemetryChannel"/> class.
         /// </summary>
 #if !NETSTANDARD
+        [SuppressMessage("Microsoft.Reliability", "CA2000:DisposeObjectsBeforeLosingScope", Justification = "WebApplicationLifecycle is needed for the life of the application.")]
         public ServerTelemetryChannel() : this(new Network(), new WebApplicationLifecycle())
 #else
         // TODO: IApplicationLifecycle implementation for netcore need to be written instead of null here.
@@ -269,6 +274,13 @@
                     {
                         TelemetryChannelEventSource.Log.ItemRejectedNoInstrumentationKey(item.ToString());
                     }
+                    else
+                    {
+                        if (!Debugger.IsAttached)
+                        {
+                            this.throttleEmptyIkeyLog.PerformThrottledAction(() => TelemetryChannelEventSource.Log.TelemetryChannelNoInstrumentationKey());
+                        }
+                    }
 
                     return;
                 }
@@ -304,9 +316,17 @@
         [SuppressMessage("Microsoft.Usage", "CA2234:PassSystemUriObjectsInsteadOfStrings", Justification = "Private variable, low risk.")]
         public void Initialize(TelemetryConfiguration configuration)
         {
+            if (configuration == null)
+            {
+                throw new ArgumentNullException(nameof(configuration));
+            }
+
             this.Transmitter.Initialize();
 
-            this.EndpointAddress = new Uri(configuration.EndpointContainer.Ingestion, "v2/track").AbsoluteUri;
+            if (this.EndpointAddress == null)
+            {
+                this.EndpointAddress = new Uri(configuration.EndpointContainer.Ingestion, "v2/track").AbsoluteUri;
+            }
 
             // ApplyPolicies will synchronously get list of file names from disk and calculate size
             // Creating task to improve application startup time

@@ -167,6 +167,11 @@
             string instrumentationKey = null,
             string connectionString = null)
         {
+            if (configurationSourceRoot == null)
+            {
+                throw new ArgumentNullException(nameof(configurationSourceRoot));
+            }
+
             var telemetryConfigValues = new List<KeyValuePair<string, string>>();
 
             bool wasAnythingSet = false;
@@ -221,7 +226,7 @@
         ///          }
         ///      }.
         /// </para>
-        /// Or
+        /// Or.
         /// <para>
         ///      "ApplicationInsights": {
         ///          "ConnectionString" : "InstrumentationKey=11111111-2222-3333-4444-555555555555;IngestionEndpoint=http://dc.services.visualstudio.com"
@@ -302,84 +307,21 @@
             services.AddSingleton<ITelemetryInitializer, Microsoft.ApplicationInsights.AspNetCore.TelemetryInitializers.DomainNameRoleInstanceTelemetryInitializer>();
 #else
             services.AddSingleton<ITelemetryInitializer, Microsoft.ApplicationInsights.WorkerService.TelemetryInitializers.DomainNameRoleInstanceTelemetryInitializer>();
-#endif            
+#endif
             services.AddSingleton<ITelemetryInitializer, HttpDependenciesParsingTelemetryInitializer>();
             services.AddSingleton<ITelemetryInitializer, ComponentVersionTelemetryInitializer>();
         }
 
         private static void AddCommonTelemetryModules(IServiceCollection services)
         {
-            services.AddSingleton<ITelemetryModule>(provider =>
-                {
-                    var options = provider.GetRequiredService<IOptions<ApplicationInsightsServiceOptions>>().Value;
-
-                    if (options.EnablePerformanceCounterCollectionModule)
-                    {
-                        return new PerformanceCollectorModule();
-                    }
-                    else
-                    {
-                        return new NoOpTelemetryModule();
-                    }
-                });
-
-            services.AddSingleton<ITelemetryModule>(provider =>
-            {
-                var options = provider.GetRequiredService<IOptions<ApplicationInsightsServiceOptions>>().Value;
-
-                if (options.EnableAppServicesHeartbeatTelemetryModule)
-                {
-                    return new AppServicesHeartbeatTelemetryModule();
-                }
-                else
-                {
-                    return new NoOpTelemetryModule();
-                }
-            });
-
-            services.AddSingleton<ITelemetryModule>(provider =>
-            {
-                var options = provider.GetRequiredService<IOptions<ApplicationInsightsServiceOptions>>().Value;
-
-                if (options.EnableAzureInstanceMetadataTelemetryModule)
-                {
-                    return new AzureInstanceMetadataTelemetryModule();
-                }
-                else
-                {
-                    return new NoOpTelemetryModule();
-                }
-            });
-
-            services.AddSingleton<ITelemetryModule>(provider =>
-            {
-                var options = provider.GetRequiredService<IOptions<ApplicationInsightsServiceOptions>>().Value;
-
-                if (options.EnableQuickPulseMetricStream)
-                {
-                    return new QuickPulseTelemetryModule();
-                }
-                else
-                {
-                    return new NoOpTelemetryModule();
-                }
-            });
+            services.AddSingleton<ITelemetryModule, PerformanceCollectorModule>();
+            services.AddSingleton<ITelemetryModule, AppServicesHeartbeatTelemetryModule>();
+            services.AddSingleton<ITelemetryModule, AzureInstanceMetadataTelemetryModule>();
+            services.AddSingleton<ITelemetryModule, QuickPulseTelemetryModule>();
 
             AddAndConfigureDependencyTracking(services);
 #if NETSTANDARD2_0
-            services.AddSingleton<ITelemetryModule>(provider =>
-            {
-                var options = provider.GetRequiredService<IOptions<ApplicationInsightsServiceOptions>>().Value;
-
-                if (options.EnableEventCounterCollectionModule)
-                {
-                    return new EventCounterCollectionModule();
-                }
-                else
-                {
-                    return new NoOpTelemetryModule();
-                }
-            });
+            services.AddSingleton<ITelemetryModule, EventCounterCollectionModule>();
 #endif
         }
 
@@ -405,19 +347,7 @@
 
         private static void AddAndConfigureDependencyTracking(IServiceCollection services)
         {
-            services.AddSingleton<ITelemetryModule>(provider =>
-            {
-                var options = provider.GetRequiredService<IOptions<ApplicationInsightsServiceOptions>>().Value;
-
-                if (options.EnableDependencyTrackingTelemetryModule)
-                {
-                    return new DependencyTrackingTelemetryModule();
-                }
-                else
-                {
-                    return new NoOpTelemetryModule();
-                }
-            });
+            services.AddSingleton<ITelemetryModule, DependencyTrackingTelemetryModule>();
 
             services.ConfigureTelemetryModule<DependencyTrackingTelemetryModule>((module, o) =>
             {

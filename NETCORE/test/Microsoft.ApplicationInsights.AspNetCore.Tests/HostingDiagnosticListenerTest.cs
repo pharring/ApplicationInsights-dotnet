@@ -2,13 +2,13 @@
 {
     using System;
     using System.Collections.Concurrent;
-    using System.ComponentModel;
     using System.Diagnostics;
     using System.Globalization;
     using System.Linq;
-    using System.Text.RegularExpressions;
     using System.Threading.Tasks;
+
     using Microsoft.ApplicationInsights.AspNetCore.DiagnosticListeners;
+    using Microsoft.ApplicationInsights.AspNetCore.Implementation;
     using Microsoft.ApplicationInsights.AspNetCore.Tests;
     using Microsoft.ApplicationInsights.AspNetCore.Tests.Helpers;
     using Microsoft.ApplicationInsights.Channel;
@@ -16,11 +16,13 @@
     using Microsoft.ApplicationInsights.DataContracts;
     using Microsoft.ApplicationInsights.Extensibility;
     using Microsoft.ApplicationInsights.Extensibility.Implementation;
-    using Microsoft.ApplicationInsights.Extensibility.W3C;
     using Microsoft.AspNetCore.Http;
     using Microsoft.Extensions.Primitives;
+
     using Xunit;
     using Xunit.Abstractions;
+
+    using AspNetCoreMajorVersion = Microsoft.ApplicationInsights.AspNetCore.Tests.AspNetCoreMajorVersion;
 
     public class HostingDiagnosticListenerTest : IDisposable
     {
@@ -505,7 +507,7 @@
                 if (isW3C)
                 {
                     // parentid populated only in W3C mode
-                    ValidateRequestTelemetry(requestTelemetry, activity, true, expectedParentId: "|4e3083444c10254ba40513c7316332eb.e2a5f830c0ee2c46.", expectedSource: null);
+                    ValidateRequestTelemetry(requestTelemetry, activity, true, expectedParentId: "e2a5f830c0ee2c46", expectedSource: null);
                     Assert.Equal("value1", requestTelemetry.Properties["prop1"]);
                     Assert.Equal("value2", requestTelemetry.Properties["prop2"]);
                 }
@@ -601,7 +603,7 @@
                 if (IsW3C)
                 {
                     Assert.Equal("4e3083444c10254ba40513c7316332eb", requestTelemetry.Context.Operation.Id);
-                    ValidateRequestTelemetry(requestTelemetry, activity, IsW3C, expectedParentId: "|4e3083444c10254ba40513c7316332eb.e2a5f830c0ee2c46.", expectedSource:null);
+                    ValidateRequestTelemetry(requestTelemetry, activity, IsW3C, expectedParentId: "e2a5f830c0ee2c46", expectedSource:null);
                 }
                 else
                 {
@@ -1182,7 +1184,7 @@
                 var requestTelemetry = context.Features.Get<RequestTelemetry>();
                 Assert.NotNull(requestTelemetry);
                 Assert.NotEqual(SamplingDecision.SampledOut, requestTelemetry.ProactiveSamplingDecision);
-                ValidateRequestTelemetry(requestTelemetry, Activity.Current, true, "|4e3083444c10254ba40513c7316332eb.e2a5f830c0ee2c46.");
+                ValidateRequestTelemetry(requestTelemetry, Activity.Current, true, "e2a5f830c0ee2c46");
             }
         }
 
@@ -1208,6 +1210,29 @@
                 Assert.NotEqual(SamplingDecision.SampledOut, requestTelemetry.ProactiveSamplingDecision);
                 ValidateRequestTelemetry(requestTelemetry, Activity.Current, true);
                 Assert.Null(requestTelemetry.Context.Operation.ParentId);
+            }
+        }
+
+        [Theory]
+        [Trait("Trait", "RoleName")]
+        [InlineData(AspNetCoreMajorVersion.One)]
+        [InlineData(AspNetCoreMajorVersion.Two)]
+        [InlineData(AspNetCoreMajorVersion.Three)]
+        public void VerifyRequestsUpdateRoleNameContainer(AspNetCoreMajorVersion aspNetCoreMajorVersion)
+        {
+            HttpContext context = CreateContext(HttpRequestScheme, HttpRequestHost, "/Test", method: "POST");
+
+            RoleNameContainer.Instance = new RoleNameContainer(hostNameSuffix: ".azurewebsites.net");
+
+            using (var hostingListener = CreateHostingListener(aspNetCoreMajorVersion))
+            {
+                context.Request.Headers["WAS-DEFAULT-HOSTNAME"] = "a.b.c.azurewebsites.net";
+                HandleRequestBegin(hostingListener, context, 0, aspNetCoreMajorVersion);
+                Assert.Equal("a.b.c", RoleNameContainer.Instance.RoleName);
+
+                context.Request.Headers["WAS-DEFAULT-HOSTNAME"] = "d.e.f.azurewebsites.net";
+                HandleRequestBegin(hostingListener, context, 0, aspNetCoreMajorVersion);
+                Assert.Equal("d.e.f", RoleNameContainer.Instance.RoleName);
             }
         }
 
@@ -1302,11 +1327,6 @@
             }
         }
 
-        private static string FormatTelemetryId(string traceId, string spanId)
-        {
-            return string.Concat("|", traceId, ".", spanId, ".");
-        }
-
         private void ValidateRequestTelemetry(RequestTelemetry requestTelemetry, Activity activity, bool isW3C, string expectedParentId = null, string expectedSource = null)
         {
             Assert.NotNull(requestTelemetry);
@@ -1314,7 +1334,7 @@
             Assert.Equal(expectedSource, requestTelemetry.Source);
             if (isW3C)
             {
-                Assert.Equal(requestTelemetry.Id, FormatTelemetryId(activity.TraceId.ToHexString(), activity.SpanId.ToHexString()));
+                Assert.Equal(requestTelemetry.Id, activity.SpanId.ToHexString());
                 Assert.Equal(requestTelemetry.Context.Operation.Id, activity.TraceId.ToHexString());
             }
             else

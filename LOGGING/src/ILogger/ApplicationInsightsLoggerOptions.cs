@@ -27,6 +27,12 @@ namespace Microsoft.Extensions.Logging.ApplicationInsights
         public bool IncludeScopes { get; set; } = true;
 
         /// <summary>
+        /// Gets or sets a value indicating whether to flush telemetry when disposing
+        /// of the logger provider.
+        /// </summary>
+        public bool FlushOnDispose { get; set; } = true;
+
+        /// <summary>
         /// Gets or sets a value indicating whether the operation context is included or not.
         /// The operation context is extracted from <see cref="System.Diagnostics.Activity.Current"/>.
         /// </summary>

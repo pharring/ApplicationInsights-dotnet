@@ -116,10 +116,8 @@ namespace Microsoft.ApplicationInsights.Tests
                 // check only legacy headers here
                 Assert.AreEqual(activity.RootId,
                     requestMsg.Headers.GetValues(RequestResponseHeaders.StandardRootIdHeader).Single());
-                Assert.AreEqual($"|{activity.TraceId.ToHexString()}.{activity.SpanId.ToHexString()}.",
-                    requestMsg.Headers.GetValues(RequestResponseHeaders.StandardParentIdHeader).Single());
-                Assert.AreEqual(this.testApplicationId1,
-                    GetRequestContextKeyValue(requestMsg, RequestResponseHeaders.RequestContextCorrelationSourceKey));
+                Assert.AreEqual(activity.SpanId.ToHexString(), requestMsg.Headers.GetValues(RequestResponseHeaders.StandardParentIdHeader).Single());
+                Assert.AreEqual(this.testApplicationId1, GetRequestContextKeyValue(requestMsg, RequestResponseHeaders.RequestContextCorrelationSourceKey));
             }
         }
 
@@ -187,9 +185,7 @@ namespace Microsoft.ApplicationInsights.Tests
                 Assert.AreEqual(activity.RootId, telemetry.Context.Operation.Id);
                 Assert.IsNull(telemetry.Context.Operation.ParentId);
 
-                Assert.AreEqual(
-                    string.Concat('|', telemetry.Context.Operation.Id, '.', activity.SpanId.ToHexString(), '.'),
-                    telemetry.Id);
+                Assert.AreEqual(activity.SpanId.ToHexString(), telemetry.Id);
                 Assert.AreEqual("v", telemetry.Properties["k"]);
 
                 Assert.AreEqual(32, telemetry.Context.Operation.Id.Length);
@@ -285,7 +281,7 @@ namespace Microsoft.ApplicationInsights.Tests
 
                 Assert.IsNotNull(telemetry);
                 Assert.AreEqual("0123456789abcdef0123456789abcdef", telemetry.Context.Operation.Id);
-                Assert.AreEqual("|0123456789abcdef0123456789abcdef.0123456789abcdef.",
+                Assert.AreEqual("0123456789abcdef",
                     telemetry.Context.Operation.ParentId);
             }
         }
@@ -312,8 +308,7 @@ namespace Microsoft.ApplicationInsights.Tests
 
                 Assert.IsNotNull(telemetry);
                 Assert.AreEqual(parent.RootId, telemetry.Context.Operation.Id);
-                Assert.AreEqual($"|{parent.RootId}.{parent.SpanId.ToHexString()}.",
-                    telemetry.Context.Operation.ParentId);
+                Assert.AreEqual(parent.SpanId.ToHexString(), telemetry.Context.Operation.ParentId);
             }
         }
 
@@ -342,9 +337,8 @@ namespace Microsoft.ApplicationInsights.Tests
 
                 Assert.IsNotNull(telemetry);
                 Assert.AreEqual(parent.RootId, telemetry.Context.Operation.Id);
-                Assert.AreEqual($"|{activity.TraceId.ToHexString()}.{activity.ParentSpanId.ToHexString()}.",
-                    telemetry.Context.Operation.ParentId);
-                Assert.AreEqual($"|{activity.TraceId.ToHexString()}.{activity.SpanId.ToHexString()}.", telemetry.Id);
+                Assert.AreEqual(activity.ParentSpanId.ToHexString(), telemetry.Context.Operation.ParentId);
+                Assert.AreEqual(activity.SpanId.ToHexString(), telemetry.Id);
                 Assert.AreEqual("v", telemetry.Properties["k"]);
 
                 string expectedVersion =
@@ -598,33 +592,43 @@ namespace Microsoft.ApplicationInsights.Tests
         [TestMethod]
         public void MultiHost_TwoActiveAndOneIsDisposedStillTracksTelemetry()
         {
-            var request = new HttpRequestMessage(HttpMethod.Post, RequestUrlWithScheme);
-            var response = new HttpResponseMessage(HttpStatusCode.OK);
+            var request1 = new HttpRequestMessage(HttpMethod.Post, RequestUrlWithScheme);
+            var response1 = new HttpResponseMessage(HttpStatusCode.OK);
 
-            var startEvent =
+            var startEvent1 =
                 new KeyValuePair<string, object>("System.Net.Http.HttpRequestOut.Start",
-                    new { Request = request });
-            var stopEvent =
+                    new { Request = request1 });
+            var stopEvent1 =
                 new KeyValuePair<string, object>("System.Net.Http.HttpRequestOut.Stop",
-                    new { Request = request, Response = response, RequestTaskStatus = TaskStatus.RanToCompletion });
+                    new { Request = request1, Response = response1, RequestTaskStatus = TaskStatus.RanToCompletion });
 
             var firstListener = this.CreateHttpListener(HttpInstrumentationVersion.V2);
             using (var secondListener = this.CreateHttpListener(HttpInstrumentationVersion.V2))
             {
                 var activity = new Activity("System.Net.Http.HttpRequestOut").Start();
-                firstListener.OnNext(startEvent);
-                secondListener.OnNext(startEvent);
+                firstListener.OnNext(startEvent1);
+                secondListener.OnNext(startEvent1);
 
-                firstListener.OnNext(stopEvent);
-                secondListener.OnNext(stopEvent);
+                firstListener.OnNext(stopEvent1);
+                secondListener.OnNext(stopEvent1);
 
                 Assert.AreEqual(1, this.sentTelemetry.Count(t => t is DependencyTelemetry));
 
                 firstListener.Dispose();
 
+                var request2 = new HttpRequestMessage(HttpMethod.Post, RequestUrlWithScheme);
+                var response2 = new HttpResponseMessage(HttpStatusCode.OK);
+
+                var startEvent2 =
+                    new KeyValuePair<string, object>("System.Net.Http.HttpRequestOut.Start",
+                        new { Request = request2 });
+                var stopEvent2 =
+                    new KeyValuePair<string, object>("System.Net.Http.HttpRequestOut.Stop",
+                        new { Request = request2, Response = response2, RequestTaskStatus = TaskStatus.RanToCompletion });
+
                 activity = new Activity("System.Net.Http.HttpRequestOut").Start();
-                secondListener.OnNext(startEvent);
-                secondListener.OnNext(stopEvent);
+                secondListener.OnNext(startEvent2);
+                secondListener.OnNext(stopEvent2);
 
                 Assert.AreEqual(2, this.sentTelemetry.Count(t => t is DependencyTelemetry));
             }
@@ -633,33 +637,43 @@ namespace Microsoft.ApplicationInsights.Tests
         [TestMethod]
         public void MultiHost_OneListenerThenAnotherTracksTelemetry()
         {
-            var request = new HttpRequestMessage(HttpMethod.Post, RequestUrlWithScheme);
-            var response = new HttpResponseMessage(HttpStatusCode.OK);
+            var request1 = new HttpRequestMessage(HttpMethod.Post, RequestUrlWithScheme);
+            var response1 = new HttpResponseMessage(HttpStatusCode.OK);
 
-            var startEvent =
+            var startEvent1 =
                 new KeyValuePair<string, object>("System.Net.Http.HttpRequestOut.Start",
-                    new { Request = request });
-            var stopEvent =
+                    new { Request = request1 });
+            var stopEvent1 =
                 new KeyValuePair<string, object>("System.Net.Http.HttpRequestOut.Stop",
-                    new { Request = request, Response = response, RequestTaskStatus = TaskStatus.RanToCompletion });
+                    new { Request = request1, Response = response1, RequestTaskStatus = TaskStatus.RanToCompletion });
 
             var activity = new Activity("System.Net.Http.HttpRequestOut").Start();
 
             using (var firstListener = this.CreateHttpListener(HttpInstrumentationVersion.V2))
             {
-                firstListener.OnNext(startEvent);
-                firstListener.OnNext(stopEvent);
+                firstListener.OnNext(startEvent1);
+                firstListener.OnNext(stopEvent1);
 
                 Assert.AreEqual(1, this.sentTelemetry.Count(t => t is DependencyTelemetry));
 
                 firstListener.Dispose();
             }
 
+            var request2 = new HttpRequestMessage(HttpMethod.Post, RequestUrlWithScheme);
+            var response2 = new HttpResponseMessage(HttpStatusCode.OK);
+
+            var startEvent2 =
+                new KeyValuePair<string, object>("System.Net.Http.HttpRequestOut.Start",
+                    new { Request = request2 });
+            var stopEvent2 =
+                new KeyValuePair<string, object>("System.Net.Http.HttpRequestOut.Stop",
+                    new { Request = request2, Response = response2, RequestTaskStatus = TaskStatus.RanToCompletion });
+
             using (var secondListener = this.CreateHttpListener(HttpInstrumentationVersion.V2))
             {
                 activity = new Activity("System.Net.Http.HttpRequestOut").Start();
-                secondListener.OnNext(startEvent);
-                secondListener.OnNext(stopEvent);
+                secondListener.OnNext(startEvent2);
+                secondListener.OnNext(stopEvent2);
 
                 Assert.AreEqual(2, this.sentTelemetry.Count(t => t is DependencyTelemetry));
             }
